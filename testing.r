@@ -12,10 +12,9 @@ ggplot(data = df[1:48,]) + geom_line(aes(x = month, y = passengers)) + scale_x_d
 initfit <- lm(passengers ~ month, data = df[1:48,])
 summary(initfit)
 
-fit <- HoltWinters(ts, seasonal = 'additive', alpha = 0.1, beta = 0.1, gamma = 0.1, start.periods = 4)
+fit <- HoltWinters(ts, seasonal = 'additive', start.periods = 4)
 round(fit$alpha, 3); round(fit$beta, 3); round(fit$gamma, 3)
-round(fit$coefficients, 3); round(fit$SSE/144, 3)
-fit$fitted
+round(fit$coefficients, 3); round(fit$SSE/nrow(df), 3)
 
 pr24 <- predict(fit, n.ahead = 24, prediction.interval = FALSE)
 round(pr24)

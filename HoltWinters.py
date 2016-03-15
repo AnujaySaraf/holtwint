@@ -10,8 +10,8 @@ from scipy.optimize import fmin_l_bfgs_b
 pd.set_option('display.max_rows', 500)
 pd.set_option('display.width',    100)
 
-# bring in the test data set from homework 4
-#-------------------------------------------
+# bring in the passenger data from HW4 and the hourly car counts from PJ2
+#------------------------------------------------------------------------
 
 sdata = open('sampledata.csv')
 tsA = sdata.read().split('\n')
@@ -21,8 +21,8 @@ cdata = open('HourCount.csv')
 tsB = [line.split(",")[1].strip("\n") for line in cdata.readlines()]
 tsB = list(map(int, tsB[1:]))
 
-# define functions to find initial values of (a,b,s) and calculate HoltWinters predictions
-#-----------------------------------------------------------------------------------------
+# define main function [holtWinters] to generate retrospective smoothing/predictions
+#-----------------------------------------------------------------------------------
 
 def holtWinters(ts, p, sp, ahead, alpha, beta, gamma):
     '''additive HoltWinters retrospective smoothing & prediction algorithm
@@ -83,10 +83,10 @@ def _predictValues(p, ahead, params):
     Lt, Tt, St = params
     return [Lt + (t+1)*Tt + St[t % p] for t in range(ahead)]
 
-# print out the results to check against the R output
-#----------------------------------------------------
+# print out the results to check against R output
+#------------------------------------------------
 
-results = holtWinters(tsB, 168, 4, 168, 0.7938, 0.0, 1)
+results = holtWinters(tsA, 12, 4, 24, 0.245, 0.015, 1.0)
 # NOTE: optimal values of (alpha, beta, gamma) taken from R
 
 print("MSD", results['MSD'])
