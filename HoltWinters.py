@@ -86,7 +86,8 @@ def _predictValues(p, ahead, params):
 # print out the results to check against the R output
 #----------------------------------------------------
 
-results = holtWinters(tsB, 168, 4, 168, 0.1, 0.0, 0.1)
+results = holtWinters(tsB, 168, 4, 168, 0.7938, 0.0, 1)
+# NOTE: optimal values of (alpha, beta, gamma) taken from R
 
 print("MSD", results['MSD'])
 print("PARAMS", results['params'])
