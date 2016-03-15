@@ -7,85 +7,93 @@ import pandas as pd
 from sklearn        import linear_model
 from scipy.optimize import fmin_l_bfgs_b
 
+pd.set_option('display.max_rows', 500)
+pd.set_option('display.width',    100)
+
 # bring in the test data set from homework 4
 #-------------------------------------------
 
 sdata = open('sampledata.csv')
-slist = sdata.read().split('\n')
-slist = list(map(int, slist))
+tsA = sdata.read().split('\n')
+tsA = list(map(int, tsA))
+
+cdata = open('HourCount.csv')
+tsB = [line.split(",")[1].strip("\n") for line in cdata.readlines()]
+tsB = list(map(int, tsB[1:]))
 
 # define functions to find initial values of (a,b,s) and calculate HoltWinters predictions
 #-----------------------------------------------------------------------------------------
 
-def initValues(slist, period, nperiods):
+def holtWinters(ts, p, sp, ahead, alpha, beta, gamma):
+    '''additive HoltWinters retrospective smoothing & prediction algorithm
+    @ts[list]:     time series of data to model
+    @p[int]:       period of the time series (for calculation of seasonal effects)
+    @sp[int]:      number of starting periods to use when calculating initial parameter values
+    @ahead[int]:   number of future periods for which predictions will be generated
+    @alpha[float]: forgetting factor [0,1] for the level component in smoothing/prediction
+    @beta[float]:  forgetting factor [0,1] for the slope component in smoothing/prediction
+    @gamma[float]: forgetting factor [0,1] for the seasonality component in smoothing/prediction
+    @return: 
+        - @params[tuple]:   final (a,b,s) parameter values
+        - @MSD[float]:      Mean Square Deviation of one-step-ahead predictions on the original time series
+        - @smoothed[list]:  smoothed values (Level + Trend + Seasonal) for the original time series
+        - @predicted[list]: predicted values for the next @ahead periods in the time series
+    sample call:
+        results = holtWinters(ts, 12, 4, 24, 0.1, 0.1, 0.1)'''
 
-    initSeries = pd.Series(slist[:period*nperiods])
-    rawSeason  = initSeries - pd.rolling_mean(initSeries, window = period, min_periods = period, center = True)
-    initSeason = [np.nanmean(rawSeason[i::period]) for i in range(period)]
+    ivals = _initValues(ts, p, sp)
+    MSD, smoothed, params = _expSmooth(ts, p, ivals, alpha, beta, gamma)
+    predicted = _predictValues(p, ahead, params)
+    return {'params': params, 'MSD': MSD, 'smoothed': smoothed, 'predicted': predicted}
+
+def _initValues(ts, p, sp):
+    '''subroutine to calculate the initial parameter values (a, b, s) for the HoltWinters algorithm'''
+
+    initSeries = pd.Series(ts[:p*sp])
+    rawSeason  = initSeries - pd.rolling_mean(initSeries, window = p, min_periods = p, center = True)
+    initSeason = [np.nanmean(rawSeason[i::p]) for i in range(p)]
     initSeason = pd.Series(initSeason) - np.mean(initSeason)
-    deSeasoned = [initSeries[v] - initSeason[v % period] for v in range(len(initSeries))]
+    deSeasoned = [initSeries[v] - initSeason[v % p] for v in range(len(initSeries))]
 
     lm = linear_model.LinearRegression()
     lm.fit(pd.DataFrame({'time': [t+1 for t in range(len(initSeries))]}), pd.Series(deSeasoned))
-    return float(lm.intercept_), float(lm.coef_[0]), list(initSeason)
+    return float(lm.intercept_), float(lm.coef_), list(initSeason)
 
-
-def holtWinters(slist, period, ahead, a0, b0, s0, alpha, beta, gamma):
+def _expSmooth(ts, p, ivals, alpha, beta, gamma):
+    '''subroutine to calculate the retrospective smoothed values, final parameter values for prediction, and MSD'''
 
     smoothed = []
-    Lt1, Tt1, St1 = a0, b0, s0
+    Lt1, Tt1, St1 = ivals[:]
 
-    for i in range(len(slist)):
+    for t in range(len(ts)):
 
-        Lt = alpha * (slist[i] - St1[i % period]) + (1 - alpha) * (Lt1 + Tt1)
-        Tt = beta  * (Lt - Lt1)                   + (1 - beta)  * (Tt1)
-        St = gamma * (slist[i] - Lt)              + (1 - gamma) * (St1[i % period])
+        Lt = alpha * (ts[t] - St1[t % p]) + (1 - alpha) * (Lt1 + Tt1)
+        Tt = beta  * (Lt - Lt1)           + (1 - beta)  * (Tt1)
+        St = gamma * (ts[t] - Lt)         + (1 - gamma) * (St1[t % p])
 
-        smoothed.append(Lt)
-        Lt1, Tt1, St1[i % period] = Lt, Tt, St
+        smoothed.append(Lt1 + Tt1 + St1[t % p])
+        Lt1, Tt1, St1[t % p] = Lt, Tt, St
 
-    predictions = [Lt1 + (t+1)*Tt1 + St1[t % period] for t in range(ahead)]
-    return smoothed, predictions
+    MSD = sum([(ts[t] - smoothed[t])**2 for t in range(len(smoothed))])/len(smoothed)
+    return MSD, smoothed, (Lt1, Tt1, St1)
+
+def _predictValues(p, ahead, params):
+    '''subroutine to generate predicted values @ahead periods into the future'''
+
+    Lt, Tt, St = params
+    return [Lt + (t+1)*Tt + St[t % p] for t in range(ahead)]
+
+# print out the results to check against the R output
+#----------------------------------------------------
+
+results = holtWinters(tsB, 168, 4, 168, 0.1, 0.0, 0.1)
+
+print("MSD", results['MSD'])
+print("PARAMS", results['params'])
+print("PREDICTED", results['predicted'])
 
 
-def MSD(params, *args):
 
-    alpha, beta, gamma = params
-    slist, period      = args[0], args[1]
-    Lt1, Tt1, St1      = args[2], args[3], args[4] 
-
-    forecasts = []
-
-    for i in range(len(slist)):
-
-        Lt = alpha * (slist[i] - St1[i % period]) + (1 - alpha) * (Lt1 + Tt1)
-        Tt = beta  * (Lt - Lt1)                   + (1 - beta)  * (Tt1)
-        St = gamma * (slist[i] - Lt)              + (1 - gamma) * (St1[i % period])
-
-        forecasts.append(Lt1 + Tt1 + St1[i % period])
-        Lt1, Tt1, St1[i % period] = Lt, Tt, St
-
-    return sum([(slist[t]-forecasts[t])**2 for t in range(len(slist))])/len(forecasts)
-
-# try to get the optimization functions to find the best (alpha, beta, gamma) values
-#-----------------------------------------------------------------------------------
-
-initial  = initValues(slist, 12, 4)
-smoothed = holtWinters(slist, 12, 24, initial[0], initial[1], initial[2], 0.1, 0.1, 0.1)
-
-init   = [0.1, 0.1, 0.1]
-bounds = [(0, 1), (0, 1), (0, 1)]
-
-parameters = fmin_l_bfgs_b(MSD, x0 = init, args = (slist, 12, initial[0], initial[1], initial[2]), bounds = bounds, approx_grad = True)
-
-alpha, beta, gamma = parameters[0]
-finalMSD           = parameters[1]
-messages           = parameters[2]
-
-print(list(map(round, smoothed[1])))
-print(alpha, beta, gamma)
-print(finalMSD)
-print(messages)
 
 
 
