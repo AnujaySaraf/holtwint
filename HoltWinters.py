@@ -7,9 +7,6 @@ import pandas as pd
 from sklearn        import linear_model
 from scipy.optimize import fmin_l_bfgs_b
 
-pd.set_option('display.max_rows', 500)
-pd.set_option('display.width',    100)
-
 # bring in the passenger data from HW4 and the hourly car counts from PJ2
 #------------------------------------------------------------------------
 
@@ -17,37 +14,41 @@ sdata = open('sampledata.csv')
 tsA = sdata.read().split('\n')
 tsA = list(map(int, tsA))
 
-cdata = open('HourCount.csv')
-tsB = [line.split(",")[1].strip("\n") for line in cdata.readlines()]
-tsB = list(map(int, tsB[1:]))
-
 # define main function [holtWinters] to generate retrospective smoothing/predictions
 #-----------------------------------------------------------------------------------
 
-def holtWinters(ts, p, sp, ahead, alpha, beta, gamma):
+def holtWinters(ts, p, sp, ahead):
     '''additive HoltWinters retrospective smoothing & prediction algorithm
     @ts[list]:     time series of data to model
     @p[int]:       period of the time series (for calculation of seasonal effects)
     @sp[int]:      number of starting periods to use when calculating initial parameter values
     @ahead[int]:   number of future periods for which predictions will be generated
-    @alpha[float]: forgetting factor [0,1] for the level component in smoothing/prediction
-    @beta[float]:  forgetting factor [0,1] for the slope component in smoothing/prediction
-    @gamma[float]: forgetting factor [0,1] for the seasonality component in smoothing/prediction
     @return: 
-        - @params[tuple]:   final (a,b,s) parameter values
-        - @MSD[float]:      Mean Square Deviation of one-step-ahead predictions on the original time series
+        - @alpha[float]:    optimal level forgetting factor estimated via optimization
+        - @beta[float]:     optimal trend forgetting factor estimated via optimization
+        - @gamma[float]:    optimal season forgetting factor estimated via optimization
+        - @MSD[float]:      optimal Mean Square Deviation with respect to one-step-ahead predictions
+        - @params[tuple]:   final (a,b,s) parameter values used for prediction of future observations
         - @smoothed[list]:  smoothed values (Level + Trend + Seasonal) for the original time series
         - @predicted[list]: predicted values for the next @ahead periods in the time series
     sample call:
-        results = holtWinters(ts, 12, 4, 24, 0.1, 0.1, 0.1)'''
+        results = holtWinters(ts, 12, 4, 24)'''
 
-    ivals = _initValues(ts, p, sp)
-    MSD, smoothed, params = _expSmooth(ts, p, ivals, alpha, beta, gamma)
+    ituning = [0.1, 0.1, 0.1]
+    ibounds = [(0,1), (0,1), (0,1)]
+    a, b, s = _initValues(ts, p, sp)
+    
+    optimized = fmin_l_bfgs_b(_MSD, ituning, args = (ts, p, a, b, s[:]), bounds = ibounds, approx_grad = True, iprint = 0)
+    alpha, beta, gamma = optimized[0]
+    MSD = optimized[1]
+
+    smoothed, params = _expSmooth(ts, p, a, b, s[:], alpha, beta, gamma)
     predicted = _predictValues(p, ahead, params)
-    return {'params': params, 'MSD': MSD, 'smoothed': smoothed, 'predicted': predicted}
+
+    return {'alpha': alpha, 'beta': beta, 'gamma': gamma, 'MSD': MSD, 'params': params, 'smoothed': smoothed, 'predicted': predicted}
 
 def _initValues(ts, p, sp):
-    '''subroutine to calculate the initial parameter values (a, b, s) for the HoltWinters algorithm'''
+    '''subroutine to calculate the initial parameter values (a, b, s) based on a fixed number of starting periods'''
 
     initSeries = pd.Series(ts[:p*sp])
     rawSeason  = initSeries - pd.rolling_mean(initSeries, window = p, min_periods = p, center = True)
@@ -59,11 +60,31 @@ def _initValues(ts, p, sp):
     lm.fit(pd.DataFrame({'time': [t+1 for t in range(len(initSeries))]}), pd.Series(deSeasoned))
     return float(lm.intercept_), float(lm.coef_), list(initSeason)
 
-def _expSmooth(ts, p, ivals, alpha, beta, gamma):
-    '''subroutine to calculate the retrospective smoothed values, final parameter values for prediction, and MSD'''
+def _MSD(params, *args):
+    '''subroutine to pass to BFGS optimization to determine the optimal (alpha, beta, gamma) values'''
 
-    smoothed = []
-    Lt1, Tt1, St1 = ivals[:]
+    predicted = []
+    ts, p     = args[0:2]
+    Lt1, Tt1  = args[2:4]
+    St1       = args[4][:]
+    alpha, beta, gamma = params[:]
+
+    for t in range(len(ts)):
+
+        Lt = alpha * (ts[t] - St1[t % p]) + (1 - alpha) * (Lt1 + Tt1)
+        Tt = beta  * (Lt - Lt1)           + (1 - beta)  * (Tt1)
+        St = gamma * (ts[t] - Lt)         + (1 - gamma) * (St1[t % p])
+
+        predicted.append(Lt1 + Tt1 + St1[t % p])
+        Lt1, Tt1, St1[t % p] = Lt, Tt, St
+
+    return sum([(ts[t] - predicted[t])**2 for t in range(len(predicted))])/len(predicted)
+
+def _expSmooth(ts, p, a, b, s, alpha, beta, gamma):
+    '''subroutine to calculate the retrospective smoothed values and final parameter values for prediction'''
+
+    smoothed      = []
+    Lt1, Tt1, St1 = a, b, s[:]
 
     for t in range(len(ts)):
 
@@ -74,8 +95,7 @@ def _expSmooth(ts, p, ivals, alpha, beta, gamma):
         smoothed.append(Lt1 + Tt1 + St1[t % p])
         Lt1, Tt1, St1[t % p] = Lt, Tt, St
 
-    MSD = sum([(ts[t] - smoothed[t])**2 for t in range(len(smoothed))])/len(smoothed)
-    return MSD, smoothed, (Lt1, Tt1, St1)
+    return smoothed, (Lt1, Tt1, St1)
 
 def _predictValues(p, ahead, params):
     '''subroutine to generate predicted values @ahead periods into the future'''
@@ -86,15 +106,9 @@ def _predictValues(p, ahead, params):
 # print out the results to check against R output
 #------------------------------------------------
 
-results = holtWinters(tsA, 12, 4, 24, 0.245, 0.015, 1.0)
-# NOTE: optimal values of (alpha, beta, gamma) taken from R
+results = holtWinters(tsA, 12, 4, 24)
 
-print("MSD", results['MSD'])
-print("PARAMS", results['params'])
-print("PREDICTED", results['predicted'])
-
-
-
-
-
+print("TUNING: ", results['alpha'], results['beta'], results['gamma'], results['MSD'])
+print("FINAL PARAMETERS: ", results['params'])
+print("PREDICTED VALUES: ", results['predicted'])
 
