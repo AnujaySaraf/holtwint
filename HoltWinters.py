@@ -34,13 +34,13 @@ def holtWinters(ts, p, sp, ahead, mtype, alpha = None, beta = None, gamma = None
         - beta[float]:   user-specified slope  forgetting factor (one-step MSD optimized if None)
         - gamma[float]:  user-specified season forgetting factor (one-step MSD optimized if None)
     @return: 
-        - @alpha[float]:    chosen/optimal level  forgetting factor used in calculations
-        - @beta[float]:     chosen/optimal trend  forgetting factor used in calculations
-        - @gamma[float]:    chosen/optimal season forgetting factor used in calculations
-        - @MSD[float]:      chosen/optimal Mean Square Deviation with respect to one-step-ahead predictions
-        - @params[tuple]:   final (a, b, s) parameter values used for the prediction of future observations
-        - @smoothed[list]:  smoothed values (level + trend + seasonal) for the original time series
-        - @predicted[list]: predicted values for the next @ahead periods of the time series
+        - alpha[float]:    chosen/optimal level  forgetting factor used in calculations
+        - beta[float]:     chosen/optimal trend  forgetting factor used in calculations
+        - gamma[float]:    chosen/optimal season forgetting factor used in calculations
+        - MSD[float]:      chosen/optimal Mean Square Deviation with respect to one-step-ahead predictions
+        - params[tuple]:   final (a, b, s) parameter values used for the prediction of future observations
+        - smoothed[list]:  smoothed values (level + trend + seasonal) for the original time series
+        - predicted[list]: predicted values for the next @ahead periods of the time series
     sample calls:
         results = holtWinters(ts, 12, 4, 24, 'additive')
         results = holtWinters(ts, 12, 4, 24, 'multiplicative', alpha = 0.1, beta = 0.2, gamma = 0.3)'''
