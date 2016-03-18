@@ -1,4 +1,5 @@
-# holtwint
-### Implement Additive and Multiplicative Holt-Winters Time Series Forecasting Algorithm
-* currently only the additive model is implemented
-* optimal values of (alpha, beta, gamma) are calculated via BFGS optimization via the one-step-ahead MSD
+# Repository: holtwint
+### Implement the Additive and Multiplicative Holt-Winters Time Series Forecasting Algorithm
+* both the additive and multiplicative models are now implemented
+* values of (alpha, beta, gamma) can either be user-selected or optimally calculated via BFGS optimization using one-step-ahead-prediction MSD as the loss function
+* prediction intervals in addition to point estimates may be implemented in the future
